@@ -2,6 +2,8 @@
 
 A PowerShell utility that automatically tiles all open terminal windows (Windows Terminal, ConEmu, Alacritty, Hyper, mintty, Tabby, WezTerm, and more) into a grid across your screen's work area.
 
+![Six terminal windows tiled in a grid](docs/tiled-terminals.png)
+
 ## How it works
 
 - `tile-terminals.ps1` finds every visible terminal window, arranges them in a grid sized to fit the screen, and remembers window→slot assignments across runs (via a cache in `%TEMP%`) so windows keep their relative positions when the set of open terminals doesn't change shape.
