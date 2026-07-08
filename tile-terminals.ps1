@@ -4,11 +4,17 @@
     Tiles all open terminal windows.
     Fast path: if TileTerminals.exe exists (compiled by install script), uses it directly.
     Slow path: pure PowerShell fallback when exe is not present.
+.PARAMETER TerminalHost
+    Restrict tiling to a single terminal host, matched case-insensitively against
+    either the window's process name (e.g. "WindowsTerminal", "wezterm-gui") or its
+    window class name (e.g. "ConsoleWindowClass"). Leave empty (default) to tile all
+    recognized terminal hosts.
 #>
 param(
-    [int]   $Cols       = 0,
-    [long]  $CallerHwnd = 0,
-    [switch]$Elevated
+    [int]   $Cols         = 0,
+    [long]  $CallerHwnd   = 0,
+    [switch]$Elevated,
+    [string]$TerminalHost = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,8 +42,8 @@ $taskName  = 'TileTerminals_Elevated'
 $handoff   = Join-Path $env:TEMP 'TileTerminals_handoff.tmp'
 
 if (Test-Path $exePath) {
-    # Write handoff: callerHwnd and optional cols
-    "$fgHwnd`n$Cols" | Set-Content $handoff -Encoding ASCII
+    # Write handoff: callerHwnd, optional cols, optional terminal-host filter
+    "$fgHwnd`n$Cols`n$TerminalHost" | Set-Content $handoff -Encoding ASCII
 
     if ($isAdmin) {
         & $exePath
@@ -60,6 +66,7 @@ if (-not $isAdmin) {
     $argStr = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     $argStr += " -Elevated -CallerHwnd $CallerHwnd"
     if ($Cols -gt 0) { $argStr += " -Cols $Cols" }
+    if ($TerminalHost) { $argStr += " -TerminalHost `"$TerminalHost`"" }
     Start-Process powershell -Verb RunAs -ArgumentList $argStr
     exit
 }
@@ -90,9 +97,10 @@ public static class TTiler4 {
     public struct RECT { public int Left,Top,Right,Bottom; }
     static readonly HashSet<string> TC=new HashSet<string>(StringComparer.OrdinalIgnoreCase){"ConsoleWindowClass","CASCADIA_HOSTING_WINDOW_CLASS","VirtualConsoleClass"};
     static readonly HashSet<string> TP=new HashSet<string>(StringComparer.OrdinalIgnoreCase){"WindowsTerminal","alacritty","hyper","mintty","ConEmu","ConEmu64","ConEmuC","ConEmuC64","cmder","FluentTerminal","tabby","terminus","wezterm-gui"};
-    public static List<long[]> FindTerminals(int selfPid,long exHwnd){
+    public static List<long[]> FindTerminals(int selfPid,long exHwnd,string hostFilter){
         var deny=new HashSet<int>{selfPid};var found=new List<long[]>();
         var shell=GetShellWindow();var desk=GetDesktopWindow();var names=new Dictionary<int,string>();
+        bool filtered=!string.IsNullOrEmpty(hostFilter);
         EnumWindows((h,_)=>{
             if(!IsWindowVisible(h)||h==shell||h==desk)return true;
             var t=new StringBuilder(256);if(GetWindowText(h,t,256)==0)return true;
@@ -100,8 +108,12 @@ public static class TTiler4 {
             if(deny.Contains(pid))return true;
             long hl=h.ToInt64();if(exHwnd!=0&&hl==exHwnd)return true;
             var c=new StringBuilder(128);GetClassName(h,c,128);
-            if(TC.Contains(c.ToString())){found.Add(new long[]{hl,pid});return true;}
             if(!names.ContainsKey(pid)){try{names[pid]=System.Diagnostics.Process.GetProcessById(pid).ProcessName;}catch{names[pid]="";}}
+            if(filtered){
+                if(string.Equals(c.ToString(),hostFilter,StringComparison.OrdinalIgnoreCase)||string.Equals(names[pid],hostFilter,StringComparison.OrdinalIgnoreCase))found.Add(new long[]{hl,pid});
+                return true;
+            }
+            if(TC.Contains(c.ToString())){found.Add(new long[]{hl,pid});return true;}
             if(TP.Contains(names[pid]))found.Add(new long[]{hl,pid});
             return true;
         },IntPtr.Zero);return found;
@@ -113,7 +125,7 @@ public static class TTiler4 {
 }
 
 Write-Host ("Caller HWND = {0}" -f $CallerHwnd) -ForegroundColor DarkGray
-$allFound = [TTiler4]::FindTerminals([int]$PID, $CallerHwnd)
+$allFound = [TTiler4]::FindTerminals([int]$PID, $CallerHwnd, $TerminalHost)
 if ($allFound.Count -eq 0) { Write-Host "No terminals to tile." -ForegroundColor Yellow; exit 0 }
 
 $n       = $allFound.Count

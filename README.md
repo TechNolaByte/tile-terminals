@@ -25,6 +25,9 @@ A PowerShell utility that automatically tiles all open terminal windows (Windows
 | `-Cols` | Force a specific number of grid columns (default: auto, based on `sqrt(n)`). |
 | `-CallerHwnd` | Window handle to re-raise after tiling (auto-detected from the foreground window if omitted). |
 | `-Elevated` | Internal flag used when the script self-relaunches with admin rights. |
+| `-TerminalHost` | Restrict tiling to a single terminal host, matched case-insensitively against the window's process name (e.g. `WindowsTerminal`, `wezterm-gui`, `alacritty`) or window class (e.g. `ConsoleWindowClass`). Default: empty, meaning all recognized terminal hosts are tiled. Example: `.\tile-terminals.ps1 -TerminalHost WindowsTerminal`. |
+
+Recognized terminal hosts by default (process name or window class): Windows Terminal, ConEmu/cmder, Alacritty, Hyper, mintty, FluentTerminal, Tabby, Terminus, WezTerm, and any raw console host window (`cmd.exe`, `powershell.exe`, etc.).
 
 ## Requirements
 

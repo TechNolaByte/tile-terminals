@@ -74,11 +74,12 @@ class TileTerminals {
         "ConEmu","ConEmu64","ConEmuC","ConEmuC64","cmder",
         "FluentTerminal","tabby","terminus","wezterm-gui"};
 
-    static List<long> FindTerminals(int selfPid, long exHwnd) {
+    static List<long> FindTerminals(int selfPid, long exHwnd, string hostFilter) {
         var deny=new HashSet<int>{selfPid};
         var found=new List<long>();
         var shell=GetShellWindow(); var desk=GetDesktopWindow();
         var names=new Dictionary<int,string>();
+        bool filtered=!string.IsNullOrEmpty(hostFilter);
         EnumWindows((h,lp)=>{
             if(!IsWindowVisible(h)||h==shell||h==desk) return true;
             var t=new StringBuilder(256); if(GetWindowText(h,t,256)==0) return true;
@@ -86,10 +87,14 @@ class TileTerminals {
             if(deny.Contains(pid)) return true;
             long hl=h.ToInt64(); if(exHwnd!=0&&hl==exHwnd) return true;
             var c=new StringBuilder(128); GetClassName(h,c,128);
-            if(TC.Contains(c.ToString())){ found.Add(hl); return true; }
             if(!names.ContainsKey(pid)){
                 try{ names[pid]=Process.GetProcessById(pid).ProcessName; }catch{ names[pid]=""; }
             }
+            if(filtered){
+                if(string.Equals(c.ToString(),hostFilter,StringComparison.OrdinalIgnoreCase)||string.Equals(names[pid],hostFilter,StringComparison.OrdinalIgnoreCase)) found.Add(hl);
+                return true;
+            }
+            if(TC.Contains(c.ToString())){ found.Add(hl); return true; }
             if(TP.Contains(names[pid])) found.Add(hl);
             return true;
         },IntPtr.Zero);
@@ -141,15 +146,17 @@ class TileTerminals {
     }
 
     static void Main(string[] args) {
-        // Read handoff file written by tile-terminals.ps1 (callerHwnd + cols)
+        // Read handoff file written by tile-terminals.ps1 (callerHwnd + cols + terminal-host filter)
         long callerHwnd = 0;
         int cols = 0;
+        string hostFilter = "";
         string handoff = Path.Combine(Path.GetTempPath(), "TileTerminals_handoff.tmp");
         if(File.Exists(handoff)){
             try{
                 var lines=File.ReadAllLines(handoff);
                 if(lines.Length>0) long.TryParse(lines[0].Trim(),out callerHwnd);
                 if(lines.Length>1) int.TryParse(lines[1].Trim(),out cols);
+                if(lines.Length>2) hostFilter=lines[2].Trim();
                 File.Delete(handoff);
             }catch{}
         }
@@ -157,7 +164,7 @@ class TileTerminals {
         if(callerHwnd==0) callerHwnd=GetForegroundWindow().ToInt64();
 
         int selfPid=Process.GetCurrentProcess().Id;
-        var found=FindTerminals(selfPid,callerHwnd);
+        var found=FindTerminals(selfPid,callerHwnd,hostFilter);
         if(found.Count==0) return;
 
         int n=found.Count;
